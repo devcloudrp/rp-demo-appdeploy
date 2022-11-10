@@ -1,0 +1,92 @@
+name: Deploy to cluster
+
+on:
+ # workflow_dispatch
+  push:
+    branches:
+    - main
+
+env:
+  EKS_CLUSTER: rptestcluster #name of cluster
+  EKS_REGION: us-east-2 #region where cluster is deployed
+
+jobs:
+ Job1:
+    name: Setup, Build, Push
+    runs-on: ubuntu-latest 
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    # Login to Jfrog
+    - name: Jfrog login
+      env:
+        JFROG_USER: ${{ secrets.JFROG_USER }}
+        JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+      run: |
+          docker login sreyo.jfrog.io -u $JFROG_USER -p $JFROG_PASSWORD
+          #kubectl create secret generic jfrog-secret --from-file=.dockerconfigjson=.docker/config.json  --type=kubernetes.io/dockerconfigjson
+          #kubectl create secret generic jfrog-secret --from-file=.dockerconfigjson=/home/runner/.docker/config.json  --type=kubernetes.io/dockerconfigjson
+    
+    # Build the Docker image
+    - name: Build docker image
+      run: |-
+        docker build ./app -t  sreyo.jfrog.io/rptest-docker-rptestcluster-local/rpcustomer-docker
+        docker push sreyo.jfrog.io/rptest-docker-rptestcluster-local/rpcustomer-docker
+  
+ Job2:
+    needs: Job1 
+    name: Deploy to rptestcluster #cluster name
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    - name: Kubectl
+      uses: azure/setup-kubectl@v2.0
+      with:
+          version: 'v1.23.6'
+      id: install       
+
+   # AWS Credentials
+    - uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.EKS_REGION }}
+
+    # Get the EKS credentials so we can deploy to the cluster
+    - run: |-
+        aws eks --region $EKS_REGION update-kubeconfig --name $EKS_CLUSTER
+        
+              
+    # Login to Jfrog
+    - name: Jfrog login
+      env:
+        JFROG_USER: ${{ secrets.JFROG_USER }}
+        JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+      run: |
+          docker login sreyo.jfrog.io -u $JFROG_USER -p $JFROG_PASSWORD
+          kubectl delete secret jfrog-secret --ignore-not-found 
+          kubectl create secret generic jfrog-secret --from-file=.dockerconfigjson=/home/runner/.docker/config.json  --type=kubernetes.io/dockerconfigjson
+
+    # Deploy dockerized app image to the EKS cluster
+    - name: Deploy rpclient backend instance 
+      run: |-
+        kubectl apply -f deployment/app.yaml
+        kubectl wait --timeout=360s --for=condition=ready pod -l app=rpcustomer
+ 
+    # Restart all pods in production
+    - name: Restart deployments
+      run: |-
+        kubectl rollout restart deploy       
+        kubectl rollout status deployment rpclient-deployment  
+      
+    # deploy gateway and virtual services
+    - name: Direct traffic application
+      run: |-
+        kubectl apply -f deployment/vs.yaml  
+
+ 

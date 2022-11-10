@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rpclient-deployment
+  labels:
+    app: rpcustomer #name of the app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rpcustomer   
+  template:
+    metadata:
+      labels: # labels to select/identify the deployment
+        app: rpcustomer       
+    spec:     # pod spec
+      imagePullSecrets:
+      - name: jfrog-secret
+      containers: 
+      - name: rpclient
+        image: sreyo.jfrog.io/rptest-docker-rptestcluster-local/rpcustomer-docker # image we pushed
+        #imagePullPolicy: Never
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rpclient-service
+  labels:
+    app: rpcustomer
+spec:
+  selector:
+    app: rpcustomer 
+  ports:
+    - port: 3000
+      targetPort: 3000
