@@ -89,4 +89,46 @@ jobs:
       run: |-
         kubectl apply -f deployment/vs.yaml  
 
+ Job3:
+    needs: Job2
+    name: Create subdomain in Cloudflare
+    runs-on: ubuntu-latest    
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+      
+    # AWS Credentials
+    - uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.EKS_REGION }}
+
+    # Get the EKS credentials so we can deploy to the cluster
+    - run: |-
+        aws eks --region $EKS_REGION update-kubeconfig --name $EKS_CLUSTER
+      
+    - name: Update CloudFlare DNS with Cluster IP 
+      run: |-
+        # purge/delete any existing records for our cloud provider subdomain.
+        existing_records=( $(curl -X GET "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_DNS_ZONE }}/dns_records?type=CNAME&name=rpdemoapi.sreyo.in" \
+           -H "X-Auth-Email: ${{ secrets.CLOUDFLARE_EMAIL }}" \
+           -H "X-Auth-Key: ${{ secrets.CLOUDFLARE_API_KEY }}" \
+           -H "Content-Type: application/json"   | jq -r '.result[].id') )
+        for record in ${existing_records[@]}; do
+          curl -X DELETE "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_DNS_ZONE }}/dns_records/${record}" \
+             -H "X-Auth-Email: ${{ secrets.CLOUDFLARE_EMAIL }}" \
+            -H "X-Auth-Key: ${{ secrets.CLOUDFLARE_API_KEY }}" \
+             -H "Content-Type: application/json"
+        done
+      
+        # Create new record with latest cluster IP.
+        CLUSTER_HOSTNAME=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+        curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_DNS_ZONE }}/dns_records" \
+           -H "X-Auth-Email: ${{ secrets.CLOUDFLARE_EMAIL }}" \
+           -H "X-Auth-Key: ${{ secrets.CLOUDFLARE_API_KEY }}" \
+           -H "Content-Type: application/json" \
+           --data '{"type":"CNAME","name":"rpdemoapi","content":"'${CLUSTER_HOSTNAME}'","ttl":120,"priority":10,"proxied":true}'
  
