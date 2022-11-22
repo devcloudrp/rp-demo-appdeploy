@@ -18,7 +18,7 @@ spec:
       - name: jfrog-secret
       containers: 
       - name: rpclient
-        image: sreyo.jfrog.io/rptest-docker-rptestcluster-local/rpcustomer-docker # image we pushed
+        image: sreyo.jfrog.io/rptest-docker-rptestcluster-local/rpcustomer-docker # app image we pushed
         #imagePullPolicy: Never
         imagePullPolicy: Always
         ports:
