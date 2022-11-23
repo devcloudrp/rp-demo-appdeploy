@@ -37,7 +37,7 @@ jobs:
   
  Job2:
     needs: Job1 
-    name: Deploy to rptestcluster #cluster name
+    name: Deploy the app image to rptestcluster #cluster name
     runs-on: ubuntu-latest
 
     steps:
