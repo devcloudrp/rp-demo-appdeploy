@@ -19,7 +19,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
       
-    # Login to Jfrog
+    ## Login to Jfrog
     - name: Jfrog login
       env:
         JFROG_USER: ${{ secrets.JFROG_USER }}
